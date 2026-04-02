@@ -22,7 +22,121 @@ const autoCapture = new AutoCapture(capture);
 const server = new McpServer({
   name: "eden-flywheel",
   version: "1.0.0",
+}, {
+  capabilities: {
+    resources: {},
+    tools: {},
+  },
 });
+
+// ── MCP Resources ───────────────────────────────────────────────
+
+server.resource(
+  "status",
+  "flywheel://status",
+  { description: "Current recording state and stats", mimeType: "application/json" },
+  async () => {
+    const stats = storage.getStats();
+    const activeSessions = capture.getActiveSessions();
+    const dataStats = exporter.getDataStats();
+
+    return {
+      contents: [
+        {
+          uri: "flywheel://status",
+          mimeType: "application/json",
+          text: JSON.stringify({
+            ...stats,
+            activeRecordings: activeSessions.length,
+            activeSessionIds: activeSessions,
+            autoCapture: autoCapture.isEnabled(),
+            autoSessionId: autoCapture.getSessionId(),
+            quality: {
+              avgScore: dataStats.avgQualityScore,
+              distribution: dataStats.qualityDistribution,
+            },
+            avgTokensPerSession: dataStats.avgTokensPerSession,
+            avgTurnsPerSession: dataStats.avgTurnsPerSession,
+            toolCallDistribution: dataStats.toolCallDistribution,
+          }, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.resource(
+  "sessions",
+  "flywheel://sessions",
+  { description: "Session index as structured data", mimeType: "application/json" },
+  async () => {
+    const sessions = storage.listSessions();
+    const summary = sessions.map((s) => ({
+      id: s.id,
+      startedAt: s.started_at,
+      stoppedAt: s.stopped_at,
+      messages: s.message_count,
+      tokens: s.token_estimate,
+      qualityScore: s.quality_score,
+      hasToolCalls: s.has_tool_calls > 0,
+      hasErrors: s.has_errors > 0,
+      status: s.stopped_at ? "completed" : "recording",
+    }));
+
+    return {
+      contents: [
+        {
+          uri: "flywheel://sessions",
+          mimeType: "application/json",
+          text: JSON.stringify(summary, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+server.resource(
+  "latest-export",
+  "flywheel://latest-export",
+  { description: "Most recent JSONL export", mimeType: "application/jsonl" },
+  async () => {
+    const jsonl = exporter.exportWithOptions({ format: "chatml" });
+    return {
+      contents: [
+        {
+          uri: "flywheel://latest-export",
+          mimeType: "application/jsonl",
+          text: jsonl || "// No completed sessions to export",
+        },
+      ],
+    };
+  }
+);
+
+server.resource(
+  "training-history",
+  "flywheel://training-history",
+  { description: "All fine-tune runs and results", mimeType: "application/json" },
+  async () => {
+    const history = getTrainingHistory();
+    const active = getActiveAdapter();
+
+    return {
+      contents: [
+        {
+          uri: "flywheel://training-history",
+          mimeType: "application/json",
+          text: JSON.stringify({
+            runs: history,
+            activeAdapter: active,
+            totalRuns: history.length,
+            successfulRuns: history.filter((r) => !r.error).length,
+          }, null, 2),
+        },
+      ],
+    };
+  }
+);
 
 // ── flywheel_record_start ───────────────────────────────────────
 
