@@ -73,6 +73,7 @@ server.tool(
             status: "saved",
             messageCount: result.messageCount,
             tokenEstimate: result.tokenEstimate,
+            qualityScore: result.qualityScore,
           }),
         },
       ],
@@ -84,20 +85,27 @@ server.tool(
 
 server.tool(
   "flywheel_export",
-  "Export recorded sessions as SFT training JSONL. Each line is a complete conversation formatted for fine-tuning.",
+  "Export recorded sessions as training JSONL. Supports formats: chatml (default), alpaca, sharegpt, raw. Can deduplicate and filter by quality score.",
   {
     sessionIds: z.array(z.string()).optional().describe("Specific session IDs to export. If omitted, exports all completed sessions."),
+    format: z.enum(["chatml", "alpaca", "sharegpt", "raw"]).optional().describe("Export format (default: chatml)"),
+    deduplicate: z.boolean().optional().describe("Remove near-duplicate sessions"),
+    minQuality: z.number().optional().describe("Minimum quality score (0.0-1.0) to include"),
+    stripSystemPrompt: z.boolean().optional().describe("Omit system prompt from ChatML output"),
   },
-  async ({ sessionIds }) => {
-    const jsonl = exporter.exportSessions(sessionIds);
+  async ({ sessionIds, format, deduplicate, minQuality, stripSystemPrompt }) => {
+    const jsonl = exporter.exportWithOptions({ sessionIds, format, deduplicate, minQuality, stripSystemPrompt });
     const lineCount = jsonl ? jsonl.split("\n").filter(Boolean).length : 0;
+
+    // Validate the export
+    const errors = exporter.validateExport(jsonl);
 
     return {
       content: [
         {
           type: "text" as const,
           text: lineCount > 0
-            ? `Exported ${lineCount} training examples:\n\n${jsonl}`
+            ? `Exported ${lineCount} training examples (format: ${format || "chatml"})${errors.length > 0 ? `\nValidation warnings: ${errors.join("; ")}` : ""}:\n\n${jsonl}`
             : "No completed sessions to export.",
         },
       ],
@@ -109,11 +117,12 @@ server.tool(
 
 server.tool(
   "flywheel_status",
-  "Show captured sessions count, total tokens, data quality stats.",
+  "Show captured sessions count, total tokens, data quality stats, tool call distribution, and token histograms.",
   {},
   async () => {
     const stats = storage.getStats();
     const activeSessions = capture.getActiveSessions();
+    const dataStats = exporter.getDataStats();
 
     return {
       content: [
@@ -123,6 +132,15 @@ server.tool(
             ...stats,
             activeRecordings: activeSessions.length,
             activeSessionIds: activeSessions,
+            quality: {
+              avgScore: dataStats.avgQualityScore,
+              distribution: dataStats.qualityDistribution,
+            },
+            avgTokensPerSession: dataStats.avgTokensPerSession,
+            avgTurnsPerSession: dataStats.avgTurnsPerSession,
+            toolCallDistribution: dataStats.toolCallDistribution,
+            turnHistogram: dataStats.turnHistogram,
+            tokenHistogram: dataStats.tokenHistogram,
           }, null, 2),
         },
       ],
@@ -134,14 +152,17 @@ server.tool(
 
 server.tool(
   "flywheel_filter",
-  "Export filtered training data. Filter by quality: sessions with tool calls, no errors, minimum message count.",
+  "Export filtered training data. Filter by quality: sessions with tool calls, no errors, minimum message count, quality score. Supports dedup and multiple formats.",
   {
     hasToolCalls: z.boolean().optional().describe("Only include sessions that contain tool calls"),
     noErrors: z.boolean().optional().describe("Exclude sessions that contain errors"),
     minMessages: z.number().optional().describe("Minimum number of messages per session"),
+    format: z.enum(["chatml", "alpaca", "sharegpt", "raw"]).optional().describe("Export format (default: chatml)"),
+    deduplicate: z.boolean().optional().describe("Remove near-duplicate sessions"),
+    minQuality: z.number().optional().describe("Minimum quality score (0.0-1.0)"),
   },
-  async ({ hasToolCalls, noErrors, minMessages }) => {
-    const jsonl = exporter.exportFiltered({ hasToolCalls, noErrors, minMessages });
+  async ({ hasToolCalls, noErrors, minMessages, format, deduplicate, minQuality }) => {
+    const jsonl = exporter.exportFiltered({ hasToolCalls, noErrors, minMessages, format, deduplicate, minQuality });
     const lineCount = jsonl ? jsonl.split("\n").filter(Boolean).length : 0;
 
     return {
@@ -149,7 +170,7 @@ server.tool(
         {
           type: "text" as const,
           text: lineCount > 0
-            ? `Filtered export: ${lineCount} quality training examples:\n\n${jsonl}`
+            ? `Filtered export: ${lineCount} quality training examples (format: ${format || "chatml"}):\n\n${jsonl}`
             : "No sessions match the filter criteria.",
         },
       ],
@@ -178,6 +199,7 @@ server.tool(
       stoppedAt: s.stopped_at,
       messages: s.message_count,
       tokens: s.token_estimate,
+      qualityScore: s.quality_score,
       hasToolCalls: s.has_tool_calls > 0,
       hasErrors: s.has_errors > 0,
       status: s.stopped_at ? "completed" : "recording",

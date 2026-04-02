@@ -15,6 +15,8 @@ export interface SessionRow {
   token_estimate: number;
   has_tool_calls: number;
   has_errors: number;
+  quality_score: number;
+  fingerprint: string | null;
   metadata: string;
 }
 
@@ -58,6 +60,8 @@ export class Storage {
         token_estimate INTEGER NOT NULL DEFAULT 0,
         has_tool_calls INTEGER NOT NULL DEFAULT 0,
         has_errors INTEGER NOT NULL DEFAULT 0,
+        quality_score REAL NOT NULL DEFAULT 0,
+        fingerprint TEXT,
         metadata TEXT NOT NULL DEFAULT '{}'
       );
 
@@ -198,6 +202,12 @@ export class Storage {
     return this.db
       .prepare(`SELECT * FROM sessions ${where} ORDER BY started_at DESC`)
       .all(...params) as SessionRow[];
+  }
+
+  updateSessionQuality(sessionId: string, score: number, fingerprint: string): void {
+    this.db
+      .prepare("UPDATE sessions SET quality_score = ?, fingerprint = ? WHERE id = ?")
+      .run(score, fingerprint, sessionId);
   }
 
   close(): void {
