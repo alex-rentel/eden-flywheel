@@ -1,7 +1,7 @@
 {
   "name": "eden-flywheel",
   "version": "1.0.0",
-  "description": "**MCP server that turns your AI conversations into training data for better local models.**",
+  "description": "MCP server that captures AI coding sessions as training data for fine-tuning local models. The closed loop: use AI → capture → fine-tune → deploy better model → repeat.",
   "main": "dist/index.js",
   "bin": {
     "eden-flywheel": "dist/index.js"
@@ -9,16 +9,35 @@
   "scripts": {
     "build": "tsc",
     "start": "tsx src/index.ts",
-    "test": "vitest run"
+    "start:verbose": "tsx src/index.ts --verbose",
+    "start:quiet": "tsx src/index.ts --quiet",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/alex-rentel/eden-flywheel.git"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "training-data",
+    "fine-tuning",
+    "lora",
+    "mlx",
+    "claude",
+    "ai",
+    "flywheel",
+    "sft",
+    "llm"
+  ],
+  "author": "Renaissance Intelligence <alex@renaissanceintelligence.ai>",
+  "license": "Apache-2.0",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18"
+  },
   "bugs": {
     "url": "https://github.com/alex-rentel/eden-flywheel/issues"
   },
@@ -32,6 +51,7 @@
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^25.5.0",
     "@types/uuid": "^10.0.0",
+    "@vitest/coverage-v8": "^4.1.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.2"

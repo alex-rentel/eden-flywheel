@@ -13,8 +13,16 @@ import { SessionCapture } from "./capture.js";
 import { Exporter } from "./export.js";
 import { trainAdapter, evaluateAdapter, promoteAdapter, getTrainingHistory, getActiveAdapter } from "./training.js";
 import { AutoCapture, estimateCost, parseClaudeCodeMessage, buildSessionMetadata } from "./autocapture.js";
+import { parseCliArgs, resolveConfig } from "./config.js";
+import { logger, setLogLevel } from "./logger.js";
 
-const storage = new Storage();
+// Resolve config from file + CLI args
+const cliOverrides = parseCliArgs(process.argv.slice(2));
+const config = resolveConfig(cliOverrides);
+
+if (config.logLevel) setLogLevel(config.logLevel);
+
+const storage = new Storage(config.dbPath);
 const capture = new SessionCapture(storage);
 const exporter = new Exporter(storage);
 const autoCapture = new AutoCapture(capture);
@@ -563,10 +571,13 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("eden-flywheel MCP server running on stdio");
+  logger.info("eden-flywheel MCP server running on stdio", {
+    logLevel: config.logLevel || "info",
+    dbPath: config.dbPath || "default",
+  });
 }
 
 main().catch((err) => {
-  console.error("Fatal:", err);
+  logger.error("Fatal error", { error: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });

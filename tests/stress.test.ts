@@ -1,10 +1,13 @@
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, beforeAll } from "vitest";
 import { Storage } from "../src/storage.js";
 import { SessionCapture } from "../src/capture.js";
 import { Exporter } from "../src/export.js";
+import { setLogLevel } from "../src/logger.js";
 import fs from "fs";
 import path from "path";
 import os from "os";
+
+beforeAll(() => setLogLevel("error")); // Suppress logs during stress tests
 
 let storage: Storage;
 let capture: SessionCapture;
