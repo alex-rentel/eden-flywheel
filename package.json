@@ -1,0 +1,39 @@
+{
+  "name": "eden-flywheel",
+  "version": "1.0.0",
+  "description": "**MCP server that turns your AI conversations into training data for better local models.**",
+  "main": "dist/index.js",
+  "bin": {
+    "eden-flywheel": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "tsx src/index.ts",
+    "test": "vitest run"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/alex-rentel/eden-flywheel.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/alex-rentel/eden-flywheel/issues"
+  },
+  "homepage": "https://github.com/alex-rentel/eden-flywheel#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "better-sqlite3": "^12.8.0",
+    "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^25.5.0",
+    "@types/uuid": "^10.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2"
+  }
+}
