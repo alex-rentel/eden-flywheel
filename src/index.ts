@@ -3,7 +3,7 @@
  * eden-flywheel MCP Server
  *
  * Captures AI coding sessions as training data for fine-tuning local models.
- * Exposes 6 tools: record_start, record_stop, export, status, filter, list.
+ * Exposes 9 tools: record_start, record_stop, export, status, filter, list, train, eval, promote.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -11,6 +11,7 @@ import { z } from "zod";
 import { Storage } from "./storage.js";
 import { SessionCapture } from "./capture.js";
 import { Exporter } from "./export.js";
+import { trainAdapter, evaluateAdapter, promoteAdapter, getTrainingHistory, getActiveAdapter } from "./training.js";
 
 const storage = new Storage();
 const capture = new SessionCapture(storage);
@@ -213,6 +214,118 @@ server.tool(
         },
       ],
     };
+  }
+);
+
+// ── flywheel_train ──────────────────────────────────────────────
+
+server.tool(
+  "flywheel_train",
+  "Trigger a LoRA fine-tune using mlx-lm. Takes a base model and training JSONL, produces an adapter.",
+  {
+    baseModel: z.string().describe("Base model path or HuggingFace ID (e.g., mlx-community/Qwen2.5-Coder-3B-Instruct-4bit)"),
+    trainData: z.string().describe("Path to training JSONL file"),
+    outputDir: z.string().optional().describe("Output directory for adapter (default: ~/.eden-models/adapters/lora-<timestamp>)"),
+    iterations: z.number().optional().describe("Training iterations (default: 100)"),
+    batchSize: z.number().optional().describe("Batch size (default: 2)"),
+    learningRate: z.number().optional().describe("Learning rate (default: 1e-5)"),
+    loraRank: z.number().optional().describe("LoRA rank (default: 8)"),
+    loraLayers: z.number().optional().describe("Number of LoRA layers (default: 16)"),
+  },
+  async (config) => {
+    const result = await trainAdapter(config);
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            status: result.error ? "failed" : "completed",
+            adapterPath: result.adapterPath,
+            baseModel: result.baseModel,
+            iterations: result.iterations,
+            durationSeconds: result.durationSeconds,
+            trainLoss: result.trainLoss,
+            evalLoss: result.evalLoss,
+            error: result.error,
+          }, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+// ── flywheel_eval ───────────────────────────────────────────────
+
+server.tool(
+  "flywheel_eval",
+  "Evaluate base model vs fine-tuned adapter on test cases. Compares performance to determine if the adapter improves the model.",
+  {
+    baseModel: z.string().describe("Base model path or HuggingFace ID"),
+    adapterPath: z.string().describe("Path to the LoRA adapter directory"),
+    testData: z.string().optional().describe("Path to test JSONL. If omitted, uses adapter size heuristic."),
+  },
+  async ({ baseModel, adapterPath, testData }) => {
+    const result = await evaluateAdapter(baseModel, adapterPath, testData);
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            baseScore: result.baseScore,
+            adaptedScore: result.adaptedScore,
+            improved: result.improved,
+            testCases: result.testCases,
+            details: result.details,
+            recommendation: result.improved
+              ? "Adapter shows improvement. Run flywheel_promote to deploy."
+              : "No improvement detected. Consider more training data or tuning hyperparameters.",
+          }, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+// ── flywheel_promote ────────────────────────────────────────────
+
+server.tool(
+  "flywheel_promote",
+  "Promote a successful adapter to ~/.eden-models/active/ for use as the default model.",
+  {
+    adapterPath: z.string().describe("Path to the adapter directory to promote"),
+    name: z.string().optional().describe("Name for the promoted adapter (default: flywheel-latest)"),
+  },
+  async ({ adapterPath, name }) => {
+    try {
+      const promotedPath = promoteAdapter(adapterPath, name);
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "promoted",
+              from: adapterPath,
+              to: promotedPath,
+              name: name || "flywheel-latest",
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (err) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "failed",
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          },
+        ],
+      };
+    }
   }
 );
 
