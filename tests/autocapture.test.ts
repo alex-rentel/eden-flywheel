@@ -113,13 +113,32 @@ describe("Claude Code tool call parsing", () => {
 
   it("parses mixed content blocks", () => {
     const blocks = [
-      { type: "text", content: "Let me read the file" },
+      { type: "text", text: "Let me read the file" },
       { type: "tool_use", id: "toolu_456", name: "Bash", input: { command: "ls -la" } },
     ];
     const msgs = parseClaudeCodeMessage("assistant", blocks);
     expect(msgs).toHaveLength(2);
     expect(msgs[0].role).toBe("assistant");
+    expect(msgs[0].content).toBe("Let me read the file");
     expect(msgs[1].toolName).toBe("Bash");
+  });
+
+  it("captures text blocks using block.text (Claude API format)", () => {
+    const blocks = [
+      { type: "text", text: "hello" },
+    ];
+    const msgs = parseClaudeCodeMessage("assistant", blocks);
+    expect(msgs).toHaveLength(1);
+    expect(msgs[0].role).toBe("assistant");
+    expect(msgs[0].content).toBe("hello");
+  });
+
+  it("ignores text blocks with content instead of text field", () => {
+    const blocks = [
+      { type: "text", content: "old format" },
+    ];
+    const msgs = parseClaudeCodeMessage("assistant", blocks);
+    expect(msgs).toHaveLength(0);
   });
 
   it("handles array content in tool_result", () => {

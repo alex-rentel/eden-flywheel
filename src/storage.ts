@@ -77,6 +77,18 @@ export class Storage {
       );
 
       CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+
+      CREATE TABLE IF NOT EXISTS training_runs (
+        id TEXT PRIMARY KEY,
+        adapter_path TEXT NOT NULL,
+        base_model TEXT NOT NULL,
+        iterations INTEGER NOT NULL,
+        duration_seconds REAL NOT NULL,
+        train_loss REAL,
+        eval_loss REAL,
+        error TEXT,
+        created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      );
     `);
   }
 
@@ -130,7 +142,11 @@ export class Storage {
 
     // Update session counters
     const isToolCall = role === "assistant" && opts?.toolName;
-    const isError = content.toLowerCase().includes("error");
+    const isError = role === "tool" && (
+      content.toLowerCase().includes("error:") ||
+      content.toLowerCase().includes("failed") ||
+      content.toLowerCase().includes("exception:")
+    );
 
     this.db
       .prepare(
@@ -208,6 +224,65 @@ export class Storage {
     this.db
       .prepare("UPDATE sessions SET quality_score = ?, fingerprint = ? WHERE id = ?")
       .run(score, fingerprint, sessionId);
+  }
+
+  // ── Training Runs ──────────────────────────────────────────────
+
+  recordTrainingRun(run: {
+    adapterPath: string;
+    baseModel: string;
+    iterations: number;
+    durationSeconds: number;
+    trainLoss: number | null;
+    evalLoss: number | null;
+    error: string | null;
+  }): string {
+    const id = randomUUID();
+    this.db
+      .prepare(
+        `INSERT INTO training_runs (id, adapter_path, base_model, iterations, duration_seconds, train_loss, eval_loss, error)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(id, run.adapterPath, run.baseModel, run.iterations, run.durationSeconds, run.trainLoss, run.evalLoss, run.error);
+    return id;
+  }
+
+  getTrainingRuns(): Array<{
+    id: string;
+    adapterPath: string;
+    baseModel: string;
+    iterations: number;
+    durationSeconds: number;
+    trainLoss: number | null;
+    evalLoss: number | null;
+    error: string | null;
+    createdAt: string;
+  }> {
+    const rows = this.db
+      .prepare("SELECT * FROM training_runs ORDER BY created_at DESC")
+      .all() as Array<{
+        id: string;
+        adapter_path: string;
+        base_model: string;
+        iterations: number;
+        duration_seconds: number;
+        train_loss: number | null;
+        eval_loss: number | null;
+        error: string | null;
+        created_at: string;
+      }>;
+
+    return rows.map((r) => ({
+      id: r.id,
+      adapterPath: r.adapter_path,
+      baseModel: r.base_model,
+      iterations: r.iterations,
+      durationSeconds: r.duration_seconds,
+      trainLoss: r.train_loss,
+      evalLoss: r.eval_loss,
+      error: r.error,
+      createdAt: r.created_at,
+    }));
   }
 
   close(): void {

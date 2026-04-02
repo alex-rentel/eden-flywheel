@@ -70,7 +70,7 @@ describe("Storage", () => {
   it("returns correct stats", () => {
     const id1 = storage.createSession();
     storage.addMessage(id1, "user", "Hello");
-    storage.addMessage(id1, "assistant", "error occurred");
+    storage.addMessage(id1, "tool", "error: file not found");
 
     const id2 = storage.createSession();
     storage.addMessage(id2, "user", "Test");
@@ -91,7 +91,7 @@ describe("Storage", () => {
 
     const id2 = storage.createSession();
     storage.addMessage(id2, "user", "test");
-    storage.addMessage(id2, "assistant", "error happened");
+    storage.addMessage(id2, "tool", "command failed");
     storage.stopSession(id2);
 
     const withTools = storage.getQualitySessions({ hasToolCalls: true });
@@ -101,5 +101,37 @@ describe("Storage", () => {
     const noErrors = storage.getQualitySessions({ noErrors: true });
     expect(noErrors).toHaveLength(1);
     expect(noErrors[0].id).toBe(id1);
+  });
+
+  it("does not flag 'error handling' in assistant messages as errors", () => {
+    const id = storage.createSession();
+    storage.addMessage(id, "assistant", "error handling is important");
+    storage.addMessage(id, "assistant", "no error found in the code");
+    storage.addMessage(id, "user", "what about error boundaries?");
+    storage.stopSession(id);
+
+    const session = storage.getSession(id)!;
+    expect(session.has_errors).toBe(0);
+  });
+
+  it("only flags tool results with actual error patterns", () => {
+    const id = storage.createSession();
+    storage.addMessage(id, "tool", "error: ENOENT no such file");
+    const session = storage.getSession(id)!;
+    expect(session.has_errors).toBe(1);
+  });
+
+  it("flags tool results with 'failed' as errors", () => {
+    const id = storage.createSession();
+    storage.addMessage(id, "tool", "command failed with exit code 1");
+    const session = storage.getSession(id)!;
+    expect(session.has_errors).toBe(1);
+  });
+
+  it("flags tool results with 'exception:' as errors", () => {
+    const id = storage.createSession();
+    storage.addMessage(id, "tool", "exception: null pointer");
+    const session = storage.getSession(id)!;
+    expect(session.has_errors).toBe(1);
   });
 });

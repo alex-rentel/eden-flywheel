@@ -7,6 +7,7 @@ import { execFile } from "child_process";
 import fs from "fs";
 import path from "path";
 import os from "os";
+import type { Storage } from "./storage.js";
 
 export interface TrainConfig {
   baseModel: string;
@@ -41,6 +42,16 @@ const EDEN_MODELS_DIR = path.join(os.homedir(), ".eden-models");
 const ACTIVE_DIR = path.join(EDEN_MODELS_DIR, "active");
 const ADAPTERS_DIR = path.join(EDEN_MODELS_DIR, "adapters");
 const HISTORY_PATH = path.join(EDEN_MODELS_DIR, "training_history.jsonl");
+
+let _storage: Storage | null = null;
+
+/**
+ * Set the storage instance for training history persistence.
+ * When set, training runs are recorded in SQLite instead of a JSONL file.
+ */
+export function setTrainingStorage(storage: Storage): void {
+  _storage = storage;
+}
 
 function ensureDirs(): void {
   for (const dir of [EDEN_MODELS_DIR, ACTIVE_DIR, ADAPTERS_DIR]) {
@@ -134,11 +145,18 @@ export async function evaluateAdapter(
   baseModel: string,
   adapterPath: string,
   testDataPath?: string,
+  trainDataPath?: string,
 ): Promise<EvalResult> {
   ensureDirs();
 
-  // If no test data, do a basic adapter sanity check
-  if (!testDataPath || !fs.existsSync(testDataPath)) {
+  // If no explicit test data, try using train data for a sanity eval
+  const effectiveTestData = testDataPath && fs.existsSync(testDataPath)
+    ? testDataPath
+    : trainDataPath && fs.existsSync(trainDataPath)
+      ? trainDataPath
+      : null;
+
+  if (!effectiveTestData) {
     const adapterExists = fs.existsSync(path.join(adapterPath, "adapters.safetensors"))
       || fs.existsSync(path.join(adapterPath, "adapters.npz"));
 
@@ -152,20 +170,12 @@ export async function evaluateAdapter(
       };
     }
 
-    // Check adapter file size as rough quality proxy
-    const files = fs.readdirSync(adapterPath);
-    let totalSize = 0;
-    for (const f of files) {
-      totalSize += fs.statSync(path.join(adapterPath, f)).size;
-    }
-    const sizeMB = totalSize / (1024 * 1024);
-
     return {
       baseScore: 0.5,
-      adaptedScore: Math.min(0.5 + sizeMB * 0.01, 0.85),
-      improved: sizeMB > 0.1,
+      adaptedScore: 0.5,
+      improved: false,
       testCases: 0,
-      details: `Adapter size: ${sizeMB.toFixed(1)} MB. No test data provided — using size heuristic.`,
+      details: "No test data available — cannot evaluate. Provide testData or re-export with a held-out split.",
     };
   }
 
@@ -174,7 +184,7 @@ export async function evaluateAdapter(
     "-m", "mlx_lm", "evaluate",
     "--model", baseModel,
     "--adapter-path", adapterPath,
-    "--data", testDataPath,
+    "--data", effectiveTestData,
   ];
 
   return new Promise<EvalResult>((resolve) => {
@@ -208,34 +218,39 @@ export function promoteAdapter(adapterPath: string, name?: string): string {
   const targetName = name || "flywheel-latest";
   const targetPath = path.join(ACTIVE_DIR, targetName);
 
+  // Validate source exists
+  if (!fs.existsSync(adapterPath)) {
+    throw new Error(`Adapter path does not exist: ${adapterPath}`);
+  }
+
   // Remove existing
   if (fs.existsSync(targetPath)) {
     fs.rmSync(targetPath, { recursive: true });
   }
 
-  fs.mkdirSync(targetPath, { recursive: true });
-
-  // Copy adapter files
-  if (!fs.existsSync(adapterPath)) {
-    throw new Error(`Adapter path does not exist: ${adapterPath}`);
-  }
-
-  const files = fs.readdirSync(adapterPath);
-  for (const f of files) {
-    const src = path.join(adapterPath, f);
-    const dest = path.join(targetPath, f);
-    if (fs.statSync(src).isFile()) {
-      fs.copyFileSync(src, dest);
-    }
-  }
+  // Copy entire adapter directory including subdirectories (Node 18+)
+  fs.cpSync(adapterPath, targetPath, { recursive: true });
 
   return targetPath;
 }
 
 /**
- * Get training history.
+ * Get training history from SQLite (preferred) or JSONL file (fallback).
  */
 export function getTrainingHistory(): TrainResult[] {
+  if (_storage) {
+    return _storage.getTrainingRuns().map((r) => ({
+      adapterPath: r.adapterPath,
+      baseModel: r.baseModel,
+      iterations: r.iterations,
+      durationSeconds: r.durationSeconds,
+      trainLoss: r.trainLoss,
+      evalLoss: r.evalLoss,
+      error: r.error,
+    }));
+  }
+
+  // Fallback to JSONL file
   ensureDirs();
   if (!fs.existsSync(HISTORY_PATH)) return [];
 
@@ -251,6 +266,20 @@ export function getTrainingHistory(): TrainResult[] {
 }
 
 function logTrainingRun(result: TrainResult): void {
+  if (_storage) {
+    _storage.recordTrainingRun({
+      adapterPath: result.adapterPath,
+      baseModel: result.baseModel,
+      iterations: result.iterations,
+      durationSeconds: result.durationSeconds,
+      trainLoss: result.trainLoss,
+      evalLoss: result.evalLoss,
+      error: result.error,
+    });
+    return;
+  }
+
+  // Fallback to JSONL file
   ensureDirs();
   const entry = JSON.stringify({
     ...result,

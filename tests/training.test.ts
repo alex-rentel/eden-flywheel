@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { promoteAdapter, getTrainingHistory, getActiveAdapter } from "../src/training.js";
+import { promoteAdapter, getTrainingHistory, getActiveAdapter, setTrainingStorage } from "../src/training.js";
+import { Storage } from "../src/storage.js";
 import fs from "fs";
 import path from "path";
 import os from "os";
@@ -40,6 +41,24 @@ describe("Training: promote adapter", () => {
   it("throws when adapter path does not exist", () => {
     expect(() => promoteAdapter("/nonexistent/path")).toThrow();
   });
+
+  it("copies subdirectories recursively", () => {
+    const adapterDir = path.join(tmpDir, "nested-adapter");
+    fs.mkdirSync(adapterDir);
+    fs.writeFileSync(path.join(adapterDir, "adapters.safetensors"), "weights");
+
+    // Create a nested config subdirectory
+    const subDir = path.join(adapterDir, "config");
+    fs.mkdirSync(subDir);
+    fs.writeFileSync(path.join(subDir, "tokenizer.json"), '{"type":"bpe"}');
+
+    const promoted = promoteAdapter(adapterDir, `nested-test-${Date.now()}`);
+    expect(fs.existsSync(path.join(promoted, "adapters.safetensors"))).toBe(true);
+    expect(fs.existsSync(path.join(promoted, "config", "tokenizer.json"))).toBe(true);
+    expect(fs.readFileSync(path.join(promoted, "config", "tokenizer.json"), "utf-8")).toBe('{"type":"bpe"}');
+
+    fs.rmSync(promoted, { recursive: true, force: true });
+  });
 });
 
 describe("Training: train result format", () => {
@@ -58,7 +77,7 @@ describe("Training: train result format", () => {
 });
 
 describe("Training: evaluate adapter", () => {
-  it("returns heuristic when no test data provided", async () => {
+  it("returns honest 'cannot evaluate' when no test data provided", async () => {
     const { evaluateAdapter } = await import("../src/training.js");
 
     // Create a fake adapter with some size
@@ -68,9 +87,25 @@ describe("Training: evaluate adapter", () => {
 
     const result = await evaluateAdapter("test-model", adapterDir);
     expect(result.baseScore).toBe(0.5);
-    expect(result.adaptedScore).toBeGreaterThan(0.5);
-    expect(result.improved).toBe(true);
-    expect(result.details).toContain("size heuristic");
+    expect(result.adaptedScore).toBe(0.5);
+    expect(result.improved).toBe(false);
+    expect(result.details).toContain("No test data available");
+  });
+
+  it("falls back to trainData when no testData provided", async () => {
+    const { evaluateAdapter } = await import("../src/training.js");
+
+    const adapterDir = path.join(tmpDir, "eval-adapter-fallback");
+    fs.mkdirSync(adapterDir);
+    fs.writeFileSync(path.join(adapterDir, "adapters.safetensors"), "weights");
+
+    const trainFile = path.join(tmpDir, "train.jsonl");
+    fs.writeFileSync(trainFile, '{"messages":[{"role":"user","content":"hi"}]}\n');
+
+    // Will fail because python3/mlx-lm isn't available, but should attempt eval with trainData
+    const result = await evaluateAdapter("test-model", adapterDir, undefined, trainFile);
+    // It reached the mlx_lm evaluate path (which errors), not the "no test data" path
+    expect(result.details).not.toContain("No test data available");
   });
 
   it("returns no improvement when adapter files missing", async () => {
@@ -152,7 +187,8 @@ describe("Training: MCP tools integration", () => {
       arguments: { baseModel: "test-model", adapterPath: adapterDir },
     });
     const evalData = JSON.parse((evalResult.content as Array<{ type: string; text: string }>)[0].text);
-    expect(evalData.improved).toBe(true);
+    expect(evalData.improved).toBe(false);
+    expect(evalData.details).toContain("No test data available");
 
     // Test promote
     const promoteResult = await client.callTool({
@@ -165,5 +201,94 @@ describe("Training: MCP tools integration", () => {
     await client.close();
     await server.close();
     storage.close();
+  });
+});
+
+describe("Training: SQLite history", () => {
+  let dbStorage: Storage;
+  let dbPath: string;
+
+  beforeEach(() => {
+    dbPath = path.join(os.tmpdir(), `flywheel-train-db-${Date.now()}-${Math.random().toString(36).slice(2)}.db`);
+    dbStorage = new Storage(dbPath);
+    setTrainingStorage(dbStorage);
+  });
+
+  afterEach(() => {
+    setTrainingStorage(null as unknown as Storage);
+    dbStorage.close();
+    for (const ext of ["", "-wal", "-shm"]) {
+      try { fs.unlinkSync(dbPath + ext); } catch {}
+    }
+  });
+
+  it("records and retrieves training runs via SQLite", () => {
+    dbStorage.recordTrainingRun({
+      adapterPath: "/tmp/adapter-1",
+      baseModel: "test-model",
+      iterations: 100,
+      durationSeconds: 60.5,
+      trainLoss: 0.25,
+      evalLoss: 0.30,
+      error: null,
+    });
+
+    dbStorage.recordTrainingRun({
+      adapterPath: "/tmp/adapter-2",
+      baseModel: "test-model-2",
+      iterations: 200,
+      durationSeconds: 120,
+      trainLoss: null,
+      evalLoss: null,
+      error: "Training failed: OOM",
+    });
+
+    const runs = dbStorage.getTrainingRuns();
+    expect(runs).toHaveLength(2);
+    // Both may share the same created_at second, so just check both exist
+    const models = runs.map((r) => r.baseModel).sort();
+    expect(models).toEqual(["test-model", "test-model-2"]);
+    const failed = runs.find((r) => r.error !== null)!;
+    expect(failed.error).toBe("Training failed: OOM");
+    const success = runs.find((r) => r.error === null)!;
+    expect(success.trainLoss).toBe(0.25);
+  });
+
+  it("getTrainingHistory uses SQLite when storage is set", () => {
+    dbStorage.recordTrainingRun({
+      adapterPath: "/tmp/adapter-x",
+      baseModel: "qwen",
+      iterations: 50,
+      durationSeconds: 30,
+      trainLoss: 0.1,
+      evalLoss: 0.2,
+      error: null,
+    });
+
+    const history = getTrainingHistory();
+    expect(history).toHaveLength(1);
+    expect(history[0].baseModel).toBe("qwen");
+    expect(history[0].trainLoss).toBe(0.1);
+  });
+
+  it("recordTrainingRun and getTrainingRuns round-trip correctly", () => {
+    const id = dbStorage.recordTrainingRun({
+      adapterPath: "/tmp/test-adapter",
+      baseModel: "test-model",
+      iterations: 50,
+      durationSeconds: 10.5,
+      trainLoss: 0.15,
+      evalLoss: null,
+      error: null,
+    });
+
+    expect(id).toBeTruthy();
+    const runs = dbStorage.getTrainingRuns();
+    expect(runs).toHaveLength(1);
+    expect(runs[0].adapterPath).toBe("/tmp/test-adapter");
+    expect(runs[0].durationSeconds).toBe(10.5);
+    expect(runs[0].trainLoss).toBe(0.15);
+    expect(runs[0].evalLoss).toBeNull();
+    expect(runs[0].createdAt).toBeTruthy();
   });
 });

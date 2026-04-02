@@ -97,6 +97,7 @@ export interface ClaudeCodeToolCall {
   name?: string;
   input?: Record<string, unknown>;
   tool_use_id?: string;
+  text?: string;
   content?: string | Array<{ type: string; text?: string }>;
 }
 
@@ -113,8 +114,8 @@ export function parseClaudeCodeMessage(
 
   // Array of content blocks
   for (const block of content) {
-    if (block.type === "text" && typeof block.content === "string") {
-      messages.push({ role, content: block.content });
+    if (block.type === "text" && typeof block.text === "string") {
+      messages.push({ role, content: block.text });
     } else if (block.type === "tool_use") {
       messages.push({
         role: "assistant",

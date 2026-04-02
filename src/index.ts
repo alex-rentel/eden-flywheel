@@ -11,7 +11,7 @@ import { z } from "zod";
 import { Storage } from "./storage.js";
 import { SessionCapture } from "./capture.js";
 import { Exporter } from "./export.js";
-import { trainAdapter, evaluateAdapter, promoteAdapter, getTrainingHistory, getActiveAdapter } from "./training.js";
+import { trainAdapter, evaluateAdapter, promoteAdapter, getTrainingHistory, getActiveAdapter, setTrainingStorage } from "./training.js";
 import { AutoCapture, estimateCost, parseClaudeCodeMessage, buildSessionMetadata } from "./autocapture.js";
 import { parseCliArgs, resolveConfig } from "./config.js";
 import { logger, setLogLevel } from "./logger.js";
@@ -23,6 +23,7 @@ const config = resolveConfig(cliOverrides);
 if (config.logLevel) setLogLevel(config.logLevel);
 
 const storage = new Storage(config.dbPath);
+setTrainingStorage(storage);
 const capture = new SessionCapture(storage);
 const exporter = new Exporter(storage);
 const autoCapture = new AutoCapture(capture);
@@ -387,10 +388,11 @@ server.tool(
   {
     baseModel: z.string().describe("Base model path or HuggingFace ID"),
     adapterPath: z.string().describe("Path to the LoRA adapter directory"),
-    testData: z.string().optional().describe("Path to test JSONL. If omitted, uses adapter size heuristic."),
+    testData: z.string().optional().describe("Path to test JSONL for evaluation"),
+    trainData: z.string().optional().describe("Path to training JSONL (used as fallback eval data if no testData)"),
   },
-  async ({ baseModel, adapterPath, testData }) => {
-    const result = await evaluateAdapter(baseModel, adapterPath, testData);
+  async ({ baseModel, adapterPath, testData, trainData }) => {
+    const result = await evaluateAdapter(baseModel, adapterPath, testData, trainData);
 
     return {
       content: [

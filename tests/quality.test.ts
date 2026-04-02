@@ -89,7 +89,7 @@ describe("Quality scoring", () => {
   it("scores a session with errors lower", () => {
     const id = capture.start();
     capture.addMessage(id, { role: "user", content: "test" });
-    capture.addMessage(id, { role: "assistant", content: "Error: something went wrong" });
+    capture.addMessage(id, { role: "tool", content: "error: something went wrong" });
     capture.stop(id);
 
     const session = storage.getSession(id)!;
