@@ -12,10 +12,12 @@ import { Storage } from "./storage.js";
 import { SessionCapture } from "./capture.js";
 import { Exporter } from "./export.js";
 import { trainAdapter, evaluateAdapter, promoteAdapter, getTrainingHistory, getActiveAdapter } from "./training.js";
+import { AutoCapture, estimateCost, parseClaudeCodeMessage, buildSessionMetadata } from "./autocapture.js";
 
 const storage = new Storage();
 const capture = new SessionCapture(storage);
 const exporter = new Exporter(storage);
+const autoCapture = new AutoCapture(capture);
 
 const server = new McpServer({
   name: "eden-flywheel",
@@ -326,6 +328,119 @@ server.tool(
         ],
       };
     }
+  }
+);
+
+// ── flywheel_autocapture ────────────────────────────────────────
+
+server.tool(
+  "flywheel_autocapture",
+  "Enable or disable automatic session recording. When enabled, all messages are captured without needing record_start/stop.",
+  {
+    enabled: z.boolean().describe("true to enable, false to disable auto-capture"),
+    model: z.string().optional().describe("Model being used (for cost tracking)"),
+  },
+  async ({ enabled, model }) => {
+    if (enabled) {
+      const sessionId = autoCapture.enable({ model });
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "enabled",
+              sessionId,
+              metadata: buildSessionMetadata({ model }),
+            }, null, 2),
+          },
+        ],
+      };
+    } else {
+      const { sessionId, result } = autoCapture.disable();
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({
+              status: "disabled",
+              sessionId,
+              ...(result || {}),
+            }, null, 2),
+          },
+        ],
+      };
+    }
+  }
+);
+
+// ── flywheel_ingest ─────────────────────────────────────────────
+
+server.tool(
+  "flywheel_ingest",
+  "Ingest a message into the auto-capture session. Use this to feed messages when auto-capture is enabled.",
+  {
+    role: z.string().describe("Message role: user, assistant, or tool"),
+    content: z.string().describe("Message content"),
+    toolCallId: z.string().optional().describe("Tool call ID"),
+    toolName: z.string().optional().describe("Tool name"),
+  },
+  async ({ role, content, toolCallId, toolName }) => {
+    autoCapture.ingest(role, content, { toolCallId, toolName });
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            status: "ingested",
+            sessionId: autoCapture.getSessionId(),
+            role,
+            contentLength: content.length,
+          }),
+        },
+      ],
+    };
+  }
+);
+
+// ── flywheel_cost ───────────────────────────────────────────────
+
+server.tool(
+  "flywheel_cost",
+  "Estimate API cost for a session. Shows input/output token counts and estimated USD cost.",
+  {
+    sessionId: z.string().describe("Session ID to calculate cost for"),
+    inputPricePerMillion: z.number().optional().describe("Input token price per million (default: $3.00)"),
+    outputPricePerMillion: z.number().optional().describe("Output token price per million (default: $15.00)"),
+  },
+  async ({ sessionId, inputPricePerMillion, outputPricePerMillion }) => {
+    const messages = storage.getMessages(sessionId);
+    if (messages.length === 0) {
+      return {
+        content: [{ type: "text" as const, text: JSON.stringify({ error: "Session not found or empty" }) }],
+      };
+    }
+
+    const pricing = (inputPricePerMillion || outputPricePerMillion)
+      ? {
+          inputPerMillion: inputPricePerMillion ?? 3.0,
+          outputPerMillion: outputPricePerMillion ?? 15.0,
+        }
+      : undefined;
+
+    const cost = estimateCost(messages, pricing);
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            sessionId,
+            ...cost,
+            messageCount: messages.length,
+          }, null, 2),
+        },
+      ],
+    };
   }
 );
 
