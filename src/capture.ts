@@ -3,7 +3,7 @@
  */
 import { Storage } from "./storage.js";
 import { scoreSession, sessionFingerprint } from "./quality.js";
-import { SessionNotActiveError } from "./errors.js";
+import { SessionNotActiveError, SessionNotFoundError } from "./errors.js";
 import { logger } from "./logger.js";
 
 export interface RecordedMessage {
@@ -37,10 +37,13 @@ export class SessionCapture {
     this.activeSessions.delete(sessionId);
 
     const session = this.storage.getSession(sessionId);
+    if (!session) {
+      throw new SessionNotFoundError(sessionId);
+    }
     const messages = this.storage.getMessages(sessionId);
 
     // Compute quality score and fingerprint
-    const quality = scoreSession(session!, messages);
+    const quality = scoreSession(session, messages);
     const fp = sessionFingerprint(messages);
     this.storage.updateSessionQuality(sessionId, quality.score, fp);
 

@@ -193,20 +193,17 @@ describe("Token estimation: edge branches", () => {
   });
 });
 
-describe("Config: save and load", () => {
-  it("saveConfig and loadConfig round-trip", () => {
+describe("Config: getConfigPath", () => {
+  it("returns a path containing config.json", () => {
+    const p = getConfigPath();
+    expect(p).toContain("config.json");
+  });
+
+  it("resetConfigCache allows re-loading", () => {
     resetConfigCache();
-    const configDir = path.join(os.tmpdir(), `flywheel-configtest-${Date.now()}`);
-    const configPath = path.join(configDir, "config.json");
-    fs.mkdirSync(configDir, { recursive: true });
-
-    const config = { logLevel: "debug" as const, dbPath: "/tmp/test.db" };
-    fs.writeFileSync(configPath, JSON.stringify(config));
-
-    // loadConfig reads from the default path, so we test the mechanism
-    expect(config.logLevel).toBe("debug");
-
-    fs.rmSync(configDir, { recursive: true, force: true });
+    // loadConfig with no file returns empty config
+    const config = loadConfig();
+    expect(config).toBeDefined();
   });
 });
 
@@ -243,9 +240,16 @@ describe("Training: history and active adapter", () => {
     expect(Array.isArray(history)).toBe(true);
   });
 
-  it("getActiveAdapter returns null when no adapter", () => {
+  it("getActiveAdapter returns null or a valid path", () => {
     const active = getActiveAdapter();
-    expect(active === null || typeof active === "string").toBe(true);
+    // In test environment without a promoted adapter, this should be null
+    // (unless a previous test promoted one to ~/.eden-models/active/)
+    if (active !== null) {
+      expect(typeof active).toBe("string");
+      expect(fs.existsSync(active)).toBe(true);
+    } else {
+      expect(active).toBeNull();
+    }
   });
 
   it("promoteAdapter copies files correctly", async () => {

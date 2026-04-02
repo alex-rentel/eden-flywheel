@@ -268,11 +268,15 @@ export class Exporter {
     const normalized = this._normalizeMessages(messages);
     if (normalized.length < 1) return null;
 
+    // Must contain at least one user and one assistant message for valid training data
+    const hasUser = normalized.some((m) => m.role === "user");
+    const hasAssistant = normalized.some((m) => m.role === "assistant");
+    if (!hasUser || !hasAssistant) return null;
+
     const sftMessages: SFTMessage[] = stripSystemPrompt
       ? normalized
       : [{ role: "system", content: "You are a helpful AI coding assistant with access to tools." }, ...normalized];
 
-    if (sftMessages.length < 2) return null;
     return JSON.stringify({ messages: sftMessages });
   }
 

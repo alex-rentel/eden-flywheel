@@ -134,4 +134,11 @@ describe("Storage", () => {
     const session = storage.getSession(id)!;
     expect(session.has_errors).toBe(1);
   });
+
+  it("does not flag tool message with bare 'error' (no colon)", () => {
+    const id = storage.createSession();
+    storage.addMessage(id, "tool", "there was an error in the file");
+    const session = storage.getSession(id)!;
+    expect(session.has_errors).toBe(0);
+  });
 });

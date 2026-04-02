@@ -48,8 +48,9 @@ let _storage: Storage | null = null;
 /**
  * Set the storage instance for training history persistence.
  * When set, training runs are recorded in SQLite instead of a JSONL file.
+ * Pass null to clear and fall back to JSONL.
  */
-export function setTrainingStorage(storage: Storage): void {
+export function setTrainingStorage(storage: Storage | null): void {
   _storage = storage;
 }
 

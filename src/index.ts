@@ -156,7 +156,16 @@ server.tool(
     metadata: z.string().optional().describe("Optional JSON metadata about the session (project, model, etc.)"),
   },
   async ({ metadata }) => {
-    const meta = metadata ? JSON.parse(metadata) : undefined;
+    let meta: Record<string, unknown> | undefined;
+    if (metadata) {
+      try {
+        meta = JSON.parse(metadata);
+      } catch {
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify({ error: "Invalid JSON in metadata" }) }],
+        };
+      }
+    }
     const sessionId = capture.start(meta);
     return {
       content: [

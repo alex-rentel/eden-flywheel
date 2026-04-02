@@ -39,8 +39,8 @@ export function loadConfig(): FlywheelConfig {
       cachedConfig = JSON.parse(raw) as FlywheelConfig;
       return cachedConfig;
     }
-  } catch {
-    // Invalid config — use defaults
+  } catch (err) {
+    process.stderr.write(`[eden-flywheel] Warning: failed to parse config at ${CONFIG_PATH}: ${err instanceof Error ? err.message : String(err)}. Using defaults.\n`);
   }
 
   cachedConfig = {};

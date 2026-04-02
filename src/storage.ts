@@ -68,6 +68,7 @@ export class Storage {
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY,
         session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        sequence INTEGER NOT NULL DEFAULT 0,
         role TEXT NOT NULL,
         content TEXT NOT NULL DEFAULT '',
         tool_call_id TEXT,
@@ -133,12 +134,18 @@ export class Storage {
     const id = randomUUID();
     const tokenEstimate = Math.ceil(content.length / 4);
 
+    // Get next sequence number for this session
+    const seqRow = this.db
+      .prepare("SELECT COALESCE(MAX(sequence), -1) + 1 AS next_seq FROM messages WHERE session_id = ?")
+      .get(sessionId) as { next_seq: number };
+    const seq = seqRow.next_seq;
+
     this.db
       .prepare(
-        `INSERT INTO messages (id, session_id, role, content, tool_call_id, tool_name, token_estimate)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO messages (id, session_id, sequence, role, content, tool_call_id, tool_name, token_estimate)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(id, sessionId, role, content, opts?.toolCallId ?? null, opts?.toolName ?? null, tokenEstimate);
+      .run(id, sessionId, seq, role, content, opts?.toolCallId ?? null, opts?.toolName ?? null, tokenEstimate);
 
     // Update session counters
     const isToolCall = role === "assistant" && opts?.toolName;
@@ -164,7 +171,7 @@ export class Storage {
 
   getMessages(sessionId: string): MessageRow[] {
     return this.db
-      .prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC")
+      .prepare("SELECT * FROM messages WHERE session_id = ? ORDER BY sequence ASC")
       .all(sessionId) as MessageRow[];
   }
 

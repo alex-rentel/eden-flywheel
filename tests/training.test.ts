@@ -18,24 +18,17 @@ afterEach(() => {
 
 describe("Training: promote adapter", () => {
   it("copies adapter files to target directory", () => {
-    // Create a fake adapter
     const adapterDir = path.join(tmpDir, "adapter");
     fs.mkdirSync(adapterDir);
     fs.writeFileSync(path.join(adapterDir, "adapters.safetensors"), "fake-weights");
     fs.writeFileSync(path.join(adapterDir, "config.json"), '{"rank": 8}');
 
-    const targetDir = path.join(tmpDir, "promoted");
-    fs.mkdirSync(targetDir, { recursive: true });
+    const promoted = promoteAdapter(adapterDir, `promote-test-${Date.now()}`);
+    expect(fs.existsSync(path.join(promoted, "adapters.safetensors"))).toBe(true);
+    expect(fs.existsSync(path.join(promoted, "config.json"))).toBe(true);
+    expect(fs.readFileSync(path.join(promoted, "adapters.safetensors"), "utf-8")).toBe("fake-weights");
 
-    // Manually copy (promoteAdapter uses ~/.eden-models, so test the logic directly)
-    const files = fs.readdirSync(adapterDir);
-    for (const f of files) {
-      fs.copyFileSync(path.join(adapterDir, f), path.join(targetDir, f));
-    }
-
-    expect(fs.existsSync(path.join(targetDir, "adapters.safetensors"))).toBe(true);
-    expect(fs.existsSync(path.join(targetDir, "config.json"))).toBe(true);
-    expect(fs.readFileSync(path.join(targetDir, "adapters.safetensors"), "utf-8")).toBe("fake-weights");
+    fs.rmSync(promoted, { recursive: true, force: true });
   });
 
   it("throws when adapter path does not exist", () => {
@@ -215,7 +208,7 @@ describe("Training: SQLite history", () => {
   });
 
   afterEach(() => {
-    setTrainingStorage(null as unknown as Storage);
+    setTrainingStorage(null);
     dbStorage.close();
     for (const ext of ["", "-wal", "-shm"]) {
       try { fs.unlinkSync(dbPath + ext); } catch {}

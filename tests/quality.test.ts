@@ -382,17 +382,19 @@ describe("Quality-based filtering", () => {
     capture.addMessage(good, { role: "assistant", content: "Fixed it" });
     capture.stop(good);
 
-    // Low quality: single message, error
+    // Low quality: minimal two-turn session
     const bad = capture.start();
     capture.addMessage(bad, { role: "user", content: "x" });
+    capture.addMessage(bad, { role: "assistant", content: "y" });
     capture.stop(bad);
 
-    const highQuality = exporter.exportWithOptions({ minQuality: 0.5 });
+    const highQuality = exporter.exportWithOptions({ minQuality: 0.6 });
     const allQuality = exporter.exportWithOptions();
 
     const highLines = highQuality.split("\n").filter(Boolean).length;
     const allLines = allQuality.split("\n").filter(Boolean).length;
 
-    expect(highLines).toBeLessThan(allLines);
+    expect(allLines).toBe(2);
+    expect(highLines).toBe(1);
   });
 });
