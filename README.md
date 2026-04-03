@@ -6,8 +6,8 @@ The closed loop: use AI → capture trajectories → fine-tune → deploy better
 
 [![License: Apache 2.0](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](https://nodejs.org)
-[![Tests](https://img.shields.io/badge/tests-139%20passing-brightgreen)]()
-[![Coverage](https://img.shields.io/badge/coverage-90%25%2B-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-150%20passing-brightgreen)]()
+[![Coverage](https://img.shields.io/badge/coverage-93%25-brightgreen)]()
 
 ## What it does
 
