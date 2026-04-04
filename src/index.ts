@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * eden-flywheel MCP Server
+ * training-flywheel MCP Server
  *
  * Captures AI coding sessions as training data for fine-tuning local models.
- * Exposes 9 tools: record_start, record_stop, export, status, filter, list, train, eval, promote.
+ * The closed loop: use AI -> capture -> fine-tune -> deploy better model -> repeat.
  */
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -29,7 +29,7 @@ const exporter = new Exporter(storage);
 const autoCapture = new AutoCapture(capture);
 
 const server = new McpServer({
-  name: "eden-flywheel",
+  name: "training-flywheel",
   version: "1.0.0",
 }, {
   capabilities: {
@@ -390,7 +390,7 @@ server.tool(
   {
     baseModel: z.string().describe("Base model path or HuggingFace ID (e.g., mlx-community/Qwen2.5-Coder-3B-Instruct-4bit)"),
     trainData: z.string().describe("Path to training JSONL file"),
-    outputDir: z.string().optional().describe("Output directory for adapter (default: ~/.eden-models/adapters/lora-<timestamp>)"),
+    outputDir: z.string().optional().describe("Output directory for adapter (default: ~/.config/training-flywheel/models/adapters/lora-<timestamp>)"),
     iterations: z.number().optional().describe("Training iterations (default: 100)"),
     batchSize: z.number().optional().describe("Batch size (default: 2)"),
     learningRate: z.number().optional().describe("Learning rate (default: 1e-5)"),
@@ -457,7 +457,7 @@ server.tool(
 
 server.tool(
   "flywheel_promote",
-  "Promote a successful adapter to ~/.eden-models/active/ for use as the default model.",
+  "Promote a successful adapter to the active slot for deployment. Copies adapter to ~/.config/training-flywheel/models/active/.",
   {
     adapterPath: z.string().describe("Path to the adapter directory to promote"),
     name: z.string().optional().describe("Name for the promoted adapter (default: flywheel-latest)"),
@@ -612,7 +612,7 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  logger.info("eden-flywheel MCP server running on stdio", {
+  logger.info("training-flywheel MCP server running on stdio", {
     logLevel: config.logLevel || "info",
     dbPath: config.dbPath || "default",
   });

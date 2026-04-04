@@ -1,5 +1,5 @@
 /**
- * Typed error hierarchy for eden-flywheel.
+ * Typed error hierarchy for training-flywheel.
  */
 
 export class FlywheelError extends Error {

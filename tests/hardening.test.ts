@@ -155,7 +155,7 @@ describe("Config", () => {
   it("getConfigPath returns expected path", () => {
     const p = getConfigPath();
     expect(p).toContain("config.json");
-    expect(p).toContain(".eden-flywheel");
+    expect(p).toContain("training-flywheel");
   });
 });
 

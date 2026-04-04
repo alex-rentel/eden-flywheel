@@ -1,7 +1,7 @@
 /**
- * Configuration file support for eden-flywheel.
+ * Configuration file support for training-flywheel.
  *
- * Reads from ~/.eden-flywheel/config.json (JSON for simplicity, no yaml dep).
+ * Reads from ~/.config/training-flywheel/config.json (JSON for simplicity, no yaml dep).
  */
 import fs from "fs";
 import path from "path";
@@ -25,7 +25,7 @@ export interface FlywheelConfig {
   };
 }
 
-const CONFIG_DIR = path.join(os.homedir(), ".eden-flywheel");
+const CONFIG_DIR = path.join(os.homedir(), ".config", "training-flywheel");
 const CONFIG_PATH = path.join(CONFIG_DIR, "config.json");
 
 let cachedConfig: FlywheelConfig | null = null;
@@ -40,7 +40,7 @@ export function loadConfig(): FlywheelConfig {
       return cachedConfig;
     }
   } catch (err) {
-    process.stderr.write(`[eden-flywheel] Warning: failed to parse config at ${CONFIG_PATH}: ${err instanceof Error ? err.message : String(err)}. Using defaults.\n`);
+    process.stderr.write(`[training-flywheel] Warning: failed to parse config at ${CONFIG_PATH}: ${err instanceof Error ? err.message : String(err)}. Using defaults.\n`);
   }
 
   cachedConfig = {};

@@ -32,7 +32,7 @@ export interface MessageRow {
 }
 
 function defaultDbPath(): string {
-  const dir = path.join(os.homedir(), ".eden", "flywheel");
+  const dir = path.join(os.homedir(), ".config", "training-flywheel");
   return path.join(dir, "flywheel.db");
 }
 

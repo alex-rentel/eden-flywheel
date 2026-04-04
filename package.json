@@ -1,10 +1,10 @@
 {
-  "name": "eden-flywheel",
+  "name": "training-flywheel",
   "version": "1.0.0",
-  "description": "MCP server that captures AI coding sessions as training data for fine-tuning local models. The closed loop: use AI → capture → fine-tune → deploy better model → repeat.",
+  "description": "MCP server that turns Claude Code sessions into fine-tuning data for local models",
   "main": "dist/index.js",
   "bin": {
-    "eden-flywheel": "dist/index.js"
+    "training-flywheel": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -17,7 +17,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/alex-rentel/eden-flywheel.git"
+    "url": "git+https://github.com/alex-rentel/training-flywheel.git"
   },
   "keywords": [
     "mcp",
@@ -39,9 +39,9 @@
     "node": ">=18"
   },
   "bugs": {
-    "url": "https://github.com/alex-rentel/eden-flywheel/issues"
+    "url": "https://github.com/alex-rentel/training-flywheel/issues"
   },
-  "homepage": "https://github.com/alex-rentel/eden-flywheel#readme",
+  "homepage": "https://github.com/alex-rentel/training-flywheel#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^12.8.0",

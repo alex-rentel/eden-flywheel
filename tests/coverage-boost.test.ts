@@ -243,7 +243,7 @@ describe("Training: history and active adapter", () => {
   it("getActiveAdapter returns null or a valid path", () => {
     const active = getActiveAdapter();
     // In test environment without a promoted adapter, this should be null
-    // (unless a previous test promoted one to ~/.eden-models/active/)
+    // (unless a previous test promoted one to ~/.config/training-flywheel/models/active/)
     if (active !== null) {
       expect(typeof active).toBe("string");
       expect(fs.existsSync(active)).toBe(true);
