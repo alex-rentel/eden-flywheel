@@ -13,6 +13,7 @@ import { SessionCapture } from "./capture.js";
 import { Exporter } from "./export.js";
 import { trainAdapter, evaluateAdapter, promoteAdapter, getTrainingHistory, getActiveAdapter, setTrainingStorage } from "./training.js";
 import { AutoCapture, estimateCost, parseClaudeCodeMessage, buildSessionMetadata } from "./autocapture.js";
+import { generateTrainingData, validateBatch } from "./generate.js";
 import { parseCliArgs, resolveConfig } from "./config.js";
 import { logger, setLogLevel } from "./logger.js";
 
@@ -600,6 +601,74 @@ server.tool(
             sessionId,
             ...cost,
             messageCount: messages.length,
+          }, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+// ── flywheel_generate ──────────────────────────────────────────
+
+server.tool(
+  "flywheel_generate",
+  "Generate synthetic tool-calling training data using Qwen 3.6 Plus (free via OpenRouter). Creates realistic coding conversations and stores them alongside captured sessions.",
+  {
+    count: z.number().describe("Number of synthetic conversations to generate"),
+    toolSchemas: z.array(z.string()).optional().describe("Tool schema descriptions to use (defaults to standard Claude Code tools)"),
+    difficulty: z.enum(["easy", "medium", "hard"]).optional().describe("Conversation complexity (default: medium)"),
+  },
+  async ({ count, toolSchemas, difficulty }) => {
+    const result = await generateTrainingData(storage, {
+      count,
+      toolSchemas,
+      difficulty,
+    });
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            status: result.stored > 0 ? "completed" : "failed",
+            batchId: result.batchId,
+            generated: result.generated,
+            stored: result.stored,
+            errors: result.errors.length > 0 ? result.errors : undefined,
+          }, null, 2),
+        },
+      ],
+    };
+  }
+);
+
+// ── flywheel_validate ──────────────────────────────────────────
+
+server.tool(
+  "flywheel_validate",
+  "Validate synthetic training data quality using Claude. Samples conversations from a batch and scores them for accuracy, format compliance, and naturalness.",
+  {
+    batchId: z.string().describe("Batch ID from flywheel_generate"),
+    sampleSize: z.number().optional().describe("Number of conversations to sample and validate (default: 5)"),
+  },
+  async ({ batchId, sampleSize }) => {
+    const result = await validateBatch(storage, batchId, sampleSize ?? 5);
+
+    return {
+      content: [
+        {
+          type: "text" as const,
+          text: JSON.stringify({
+            status: result.sampled > 0 ? "completed" : "no_data",
+            sampled: result.sampled,
+            avgScore: result.avgScore,
+            flagged: result.flagged,
+            scores: result.scores,
+            recommendation: result.avgScore >= 3.5
+              ? "Quality looks good. Safe to include in training set."
+              : result.avgScore >= 2.5
+                ? "Mixed quality. Review flagged examples before training."
+                : "Low quality batch. Consider regenerating with different parameters.",
           }, null, 2),
         },
       ],
