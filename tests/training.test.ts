@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { promoteAdapter, getTrainingHistory, getActiveAdapter, setTrainingStorage } from "../src/training.js";
+import { promoteAdapter, getTrainingHistory, getActiveAdapter, setTrainingStorage, isOllamaRunning } from "../src/training.js";
 import { Storage } from "../src/storage.js";
 import fs from "fs";
 import path from "path";
@@ -307,5 +307,18 @@ describe("Training: SQLite history", () => {
     expect(runs[0].trainLoss).toBe(0.15);
     expect(runs[0].evalLoss).toBeNull();
     expect(runs[0].createdAt).toBeTruthy();
+  });
+});
+
+describe("Training: Ollama integration", () => {
+  it("isOllamaRunning returns boolean", async () => {
+    const running = await isOllamaRunning();
+    expect(typeof running).toBe("boolean");
+  });
+
+  it("getTrainingHistory returns empty array without storage", () => {
+    setTrainingStorage(null);
+    const history = getTrainingHistory();
+    expect(history).toEqual([]);
   });
 });
