@@ -259,12 +259,12 @@ describe("Training: history and active adapter", () => {
     fs.writeFileSync(path.join(tmpAdapter, "adapters.safetensors"), "weights");
     fs.writeFileSync(path.join(tmpAdapter, "config.json"), '{}');
 
-    const promoted = promoteAdapter(tmpAdapter, `test-${Date.now()}`);
-    expect(fs.existsSync(path.join(promoted, "adapters.safetensors"))).toBe(true);
-    expect(fs.existsSync(path.join(promoted, "config.json"))).toBe(true);
+    const result = await promoteAdapter(tmpAdapter, `test-${Date.now()}`);
+    expect(fs.existsSync(path.join(result.promotedPath, "adapters.safetensors"))).toBe(true);
+    expect(fs.existsSync(path.join(result.promotedPath, "config.json"))).toBe(true);
 
     fs.rmSync(tmpAdapter, { recursive: true, force: true });
-    fs.rmSync(promoted, { recursive: true, force: true });
+    fs.rmSync(result.promotedPath, { recursive: true, force: true });
   });
 
   it("trainAdapter with existing but empty data file", async () => {

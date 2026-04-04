@@ -11,7 +11,7 @@ import { z } from "zod";
 import { Storage } from "./storage.js";
 import { SessionCapture } from "./capture.js";
 import { Exporter } from "./export.js";
-import { trainAdapter, evaluateAdapter, promoteAdapter, getTrainingHistory, getActiveAdapter, setTrainingStorage } from "./training.js";
+import { trainAdapter, evaluateAdapter, promoteAdapter, getTrainingHistory, getActiveAdapter, setTrainingStorage, isOllamaRunning } from "./training.js";
 import { AutoCapture, estimateCost, parseClaudeCodeMessage, buildSessionMetadata } from "./autocapture.js";
 import { generateTrainingData, validateBatch } from "./generate.js";
 import { parseCliArgs, resolveConfig } from "./config.js";
@@ -458,14 +458,16 @@ server.tool(
 
 server.tool(
   "flywheel_promote",
-  "Promote a successful adapter to the active slot for deployment. Copies adapter to ~/.config/training-flywheel/models/active/.",
+  "Promote a successful adapter to the active slot. If GGUF format, auto-deploys to Ollama. MLX adapters require mlx-lm for inference.",
   {
     adapterPath: z.string().describe("Path to the adapter directory to promote"),
     name: z.string().optional().describe("Name for the promoted adapter (default: flywheel-latest)"),
+    deployOllama: z.boolean().optional().describe("Deploy to Ollama (default: true for GGUF adapters)"),
+    baseModelGguf: z.string().optional().describe("Base model for Ollama Modelfile (default: llama3.2:3b)"),
   },
-  async ({ adapterPath, name }) => {
+  async ({ adapterPath, name, deployOllama, baseModelGguf }) => {
     try {
-      const promotedPath = promoteAdapter(adapterPath, name);
+      const result = await promoteAdapter(adapterPath, name, { deployOllama, baseModelGguf });
       return {
         content: [
           {
@@ -473,8 +475,13 @@ server.tool(
             text: JSON.stringify({
               status: "promoted",
               from: adapterPath,
-              to: promotedPath,
+              to: result.promotedPath,
               name: name || "flywheel-latest",
+              adapterFormat: result.adapterFormat,
+              ollamaDeployed: result.ollamaDeployed,
+              ollamaModel: result.ollamaModel,
+              ollamaError: result.ollamaError,
+              note: result.note,
             }, null, 2),
           },
         ],

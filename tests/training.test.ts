@@ -17,40 +17,63 @@ afterEach(() => {
 });
 
 describe("Training: promote adapter", () => {
-  it("copies adapter files to target directory", () => {
+  it("copies adapter files to target directory", async () => {
     const adapterDir = path.join(tmpDir, "adapter");
     fs.mkdirSync(adapterDir);
     fs.writeFileSync(path.join(adapterDir, "adapters.safetensors"), "fake-weights");
     fs.writeFileSync(path.join(adapterDir, "config.json"), '{"rank": 8}');
 
-    const promoted = promoteAdapter(adapterDir, `promote-test-${Date.now()}`);
-    expect(fs.existsSync(path.join(promoted, "adapters.safetensors"))).toBe(true);
-    expect(fs.existsSync(path.join(promoted, "config.json"))).toBe(true);
-    expect(fs.readFileSync(path.join(promoted, "adapters.safetensors"), "utf-8")).toBe("fake-weights");
+    const result = await promoteAdapter(adapterDir, `promote-test-${Date.now()}`);
+    expect(fs.existsSync(path.join(result.promotedPath, "adapters.safetensors"))).toBe(true);
+    expect(fs.existsSync(path.join(result.promotedPath, "config.json"))).toBe(true);
+    expect(fs.readFileSync(path.join(result.promotedPath, "adapters.safetensors"), "utf-8")).toBe("fake-weights");
+    expect(result.adapterFormat).toBe("mlx");
 
-    fs.rmSync(promoted, { recursive: true, force: true });
+    fs.rmSync(result.promotedPath, { recursive: true, force: true });
   });
 
-  it("throws when adapter path does not exist", () => {
-    expect(() => promoteAdapter("/nonexistent/path")).toThrow();
+  it("throws when adapter path does not exist", async () => {
+    await expect(promoteAdapter("/nonexistent/path")).rejects.toThrow();
   });
 
-  it("copies subdirectories recursively", () => {
+  it("copies subdirectories recursively", async () => {
     const adapterDir = path.join(tmpDir, "nested-adapter");
     fs.mkdirSync(adapterDir);
     fs.writeFileSync(path.join(adapterDir, "adapters.safetensors"), "weights");
 
-    // Create a nested config subdirectory
     const subDir = path.join(adapterDir, "config");
     fs.mkdirSync(subDir);
     fs.writeFileSync(path.join(subDir, "tokenizer.json"), '{"type":"bpe"}');
 
-    const promoted = promoteAdapter(adapterDir, `nested-test-${Date.now()}`);
-    expect(fs.existsSync(path.join(promoted, "adapters.safetensors"))).toBe(true);
-    expect(fs.existsSync(path.join(promoted, "config", "tokenizer.json"))).toBe(true);
-    expect(fs.readFileSync(path.join(promoted, "config", "tokenizer.json"), "utf-8")).toBe('{"type":"bpe"}');
+    const result = await promoteAdapter(adapterDir, `nested-test-${Date.now()}`);
+    expect(fs.existsSync(path.join(result.promotedPath, "adapters.safetensors"))).toBe(true);
+    expect(fs.existsSync(path.join(result.promotedPath, "config", "tokenizer.json"))).toBe(true);
+    expect(result.adapterFormat).toBe("mlx");
 
-    fs.rmSync(promoted, { recursive: true, force: true });
+    fs.rmSync(result.promotedPath, { recursive: true, force: true });
+  });
+
+  it("detects GGUF adapter format", async () => {
+    const adapterDir = path.join(tmpDir, "gguf-adapter");
+    fs.mkdirSync(adapterDir);
+    fs.writeFileSync(path.join(adapterDir, "adapter.gguf"), "fake-gguf");
+
+    const result = await promoteAdapter(adapterDir, `gguf-test-${Date.now()}`, { deployOllama: false });
+    expect(result.adapterFormat).toBe("gguf");
+    expect(result.ollamaDeployed).toBe(false);
+
+    fs.rmSync(result.promotedPath, { recursive: true, force: true });
+  });
+
+  it("adds note for MLX adapters about Ollama limitation", async () => {
+    const adapterDir = path.join(tmpDir, "mlx-adapter");
+    fs.mkdirSync(adapterDir);
+    fs.writeFileSync(path.join(adapterDir, "adapters.safetensors"), "weights");
+
+    const result = await promoteAdapter(adapterDir, `mlx-test-${Date.now()}`);
+    expect(result.note).toContain("mlx-lm");
+
+    fs.rmSync(result.promotedPath, { recursive: true, force: true });
   });
 });
 

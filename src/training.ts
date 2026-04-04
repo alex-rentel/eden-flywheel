@@ -207,10 +207,23 @@ export async function evaluateAdapter(
   });
 }
 
+export interface PromoteResult {
+  promotedPath: string;
+  ollamaDeployed: boolean;
+  ollamaModel?: string;
+  ollamaError?: string;
+  adapterFormat: "gguf" | "mlx" | "unknown";
+  note?: string;
+}
+
 /**
- * Promote a successful adapter to the active slot.
+ * Promote a successful adapter to the active slot and optionally deploy to Ollama.
  */
-export function promoteAdapter(adapterPath: string, name?: string): string {
+export async function promoteAdapter(
+  adapterPath: string,
+  name?: string,
+  opts?: { deployOllama?: boolean; baseModelGguf?: string },
+): Promise<PromoteResult> {
   ensureDirs();
 
   const targetName = name || "flywheel-latest";
@@ -229,7 +242,93 @@ export function promoteAdapter(adapterPath: string, name?: string): string {
   // Copy entire adapter directory including subdirectories (Node 18+)
   fs.cpSync(adapterPath, targetPath, { recursive: true });
 
-  return targetPath;
+  // Detect adapter format
+  const files = fs.readdirSync(adapterPath);
+  const hasGguf = files.some(f => f.endsWith(".gguf"));
+  const hasSafetensors = files.some(f => f.endsWith(".safetensors"));
+  const adapterFormat: "gguf" | "mlx" | "unknown" = hasGguf ? "gguf" : hasSafetensors ? "mlx" : "unknown";
+
+  const result: PromoteResult = {
+    promotedPath: targetPath,
+    ollamaDeployed: false,
+    adapterFormat,
+  };
+
+  // Attempt Ollama deployment if requested or auto-detect
+  if (opts?.deployOllama !== false && adapterFormat === "gguf") {
+    const ollamaResult = await deployToOllama(adapterPath, targetName, opts?.baseModelGguf);
+    result.ollamaDeployed = ollamaResult.success;
+    result.ollamaModel = ollamaResult.modelName;
+    result.ollamaError = ollamaResult.error;
+  } else if (adapterFormat === "mlx") {
+    result.note = "MLX adapter detected. Use mlx-lm directly for inference — Ollama does not yet support custom MLX adapters.";
+  }
+
+  return result;
+}
+
+/**
+ * Check if Ollama is running.
+ */
+export async function isOllamaRunning(): Promise<boolean> {
+  try {
+    const response = await fetch("http://localhost:11434/api/tags");
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Deploy a GGUF adapter to Ollama.
+ */
+async function deployToOllama(
+  adapterPath: string,
+  modelName: string,
+  baseModelGguf?: string,
+): Promise<{ success: boolean; modelName?: string; error?: string }> {
+  // Check Ollama is running
+  const running = await isOllamaRunning();
+  if (!running) {
+    return { success: false, error: "Ollama is not running. Start it with: ollama serve" };
+  }
+
+  // Find GGUF files
+  const files = fs.readdirSync(adapterPath);
+  const ggufFiles = files.filter(f => f.endsWith(".gguf"));
+
+  if (ggufFiles.length === 0) {
+    return { success: false, error: "No .gguf files found in adapter directory" };
+  }
+
+  const adapterGguf = path.join(adapterPath, ggufFiles[0]);
+  const baseModel = baseModelGguf || "llama3.2:3b";
+
+  // Create Modelfile
+  const modelfilePath = path.join(adapterPath, "Modelfile");
+  const modelfileContent = `FROM ${baseModel}
+ADAPTER ${adapterGguf}
+SYSTEM "You are a tool-calling assistant. Use <tool_call> tags for tool invocations."
+`;
+  fs.writeFileSync(modelfilePath, modelfileContent);
+
+  // Run ollama create
+  const ollamaModelName = `flywheel-${modelName}`;
+  try {
+    const { execFileSync } = await import("child_process");
+    execFileSync("ollama", ["create", ollamaModelName, "-f", modelfilePath], {
+      timeout: 120_000,
+      encoding: "utf-8",
+    });
+
+    return { success: true, modelName: ollamaModelName };
+  } catch (err) {
+    return {
+      success: false,
+      modelName: ollamaModelName,
+      error: `ollama create failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
 }
 
 /**
