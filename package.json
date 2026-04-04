@@ -34,7 +34,7 @@
   ],
   "author": "Renaissance Intelligence <alex@renaissanceintelligence.ai>",
   "license": "Apache-2.0",
-  "type": "commonjs",
+  "type": "module",
   "engines": {
     "node": ">=18"
   },

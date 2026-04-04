@@ -99,4 +99,28 @@ describe("Exporter", () => {
     const jsonl = exporter.exportSessions();
     expect(jsonl).toBe("");
   });
+
+  it("exports with eval split", () => {
+    // Create enough sessions for a meaningful split
+    for (let i = 0; i < 10; i++) {
+      createSampleSession();
+    }
+
+    const { train, eval: evalData } = exporter.exportWithEvalSplit({ evalSplitPercent: 10 });
+    const trainLines = train.split("\n").filter(Boolean);
+    const evalLines = evalData.split("\n").filter(Boolean);
+
+    expect(evalLines.length).toBeGreaterThanOrEqual(1);
+    expect(trainLines.length).toBeGreaterThanOrEqual(1);
+    expect(trainLines.length + evalLines.length).toBe(10);
+  });
+
+  it("eval split with 1 session still produces eval set", () => {
+    createSampleSession();
+    const { train, eval: evalData } = exporter.exportWithEvalSplit({ evalSplitPercent: 10 });
+
+    // With 1 session, eval gets 1 and train gets 0
+    const evalLines = evalData.split("\n").filter(Boolean);
+    expect(evalLines.length).toBe(1);
+  });
 });

@@ -35,6 +35,7 @@ export interface ExportOptions {
   deduplicate?: boolean;
   minQuality?: number;
   stripSystemPrompt?: boolean;
+  evalSplitPercent?: number;
 }
 
 export interface FilterOptions {
@@ -62,6 +63,7 @@ export class Exporter {
 
   /**
    * Export with full options.
+   * Returns train JSONL. If evalSplitPercent is set, also returns eval JSONL via the second element.
    */
   exportWithOptions(opts?: ExportOptions): string {
     const format = opts?.format ?? "chatml";
@@ -92,6 +94,55 @@ export class Exporter {
     }
 
     return this._formatSessions(sessionsWithMessages, format, opts?.stripSystemPrompt);
+  }
+
+  /**
+   * Export with a held-out eval split.
+   * Returns { train: string, eval: string } where eval contains evalSplitPercent% of sessions.
+   */
+  exportWithEvalSplit(opts?: ExportOptions): { train: string; eval: string } {
+    const format = opts?.format ?? "chatml";
+    const splitPercent = opts?.evalSplitPercent ?? 10;
+    let sessions = opts?.sessionIds
+      ? opts.sessionIds.map((id) => this.storage.getSession(id)).filter(Boolean) as SessionRow[]
+      : this.storage.listSessions().filter((s) => s.stopped_at !== null);
+
+    let sessionsWithMessages = sessions.map((s) => ({
+      session: s,
+      messages: this.storage.getMessages(s.id),
+    }));
+
+    // Quality filtering
+    if (opts?.minQuality !== undefined) {
+      sessionsWithMessages = sessionsWithMessages.filter(({ session, messages }) => {
+        const score = scoreSession(session, messages);
+        return score.score >= opts.minQuality!;
+      });
+    }
+
+    // Deduplication
+    if (opts?.deduplicate) {
+      const keep = deduplicateSessions(
+        sessionsWithMessages.map(({ session, messages }) => ({ id: session.id, messages }))
+      );
+      sessionsWithMessages = sessionsWithMessages.filter(({ session }) => keep.has(session.id));
+    }
+
+    // Split into train and eval sets
+    const evalCount = Math.max(1, Math.round(sessionsWithMessages.length * splitPercent / 100));
+    // Shuffle deterministically using session IDs
+    const sorted = [...sessionsWithMessages].sort((a, b) => {
+      const hashA = a.session.id.replace(/-/g, "");
+      const hashB = b.session.id.replace(/-/g, "");
+      return hashA.localeCompare(hashB);
+    });
+    const evalSessions = sorted.slice(0, evalCount);
+    const trainSessions = sorted.slice(evalCount);
+
+    return {
+      train: this._formatSessions(trainSessions, format, opts?.stripSystemPrompt),
+      eval: this._formatSessions(evalSessions, format, opts?.stripSystemPrompt),
+    };
   }
 
   /**

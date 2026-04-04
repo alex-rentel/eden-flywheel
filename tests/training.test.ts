@@ -85,20 +85,21 @@ describe("Training: evaluate adapter", () => {
     expect(result.details).toContain("No test data available");
   });
 
-  it("falls back to trainData when no testData provided", async () => {
+  it("evaluates when explicit test data is provided", async () => {
     const { evaluateAdapter } = await import("../src/training.js");
 
-    const adapterDir = path.join(tmpDir, "eval-adapter-fallback");
+    const adapterDir = path.join(tmpDir, "eval-adapter-with-test");
     fs.mkdirSync(adapterDir);
     fs.writeFileSync(path.join(adapterDir, "adapters.safetensors"), "weights");
 
-    const trainFile = path.join(tmpDir, "train.jsonl");
-    fs.writeFileSync(trainFile, '{"messages":[{"role":"user","content":"hi"}]}\n');
+    const testFile = path.join(tmpDir, "eval.jsonl");
+    fs.writeFileSync(testFile, '{"messages":[{"role":"user","content":"hi"},{"role":"assistant","content":"hello"}]}\n');
 
-    // Will fail because python3/mlx-lm isn't available, but should attempt eval with trainData
-    const result = await evaluateAdapter("test-model", adapterDir, undefined, trainFile);
+    // Will fail because python3/mlx-lm isn't available, but should attempt eval with testData
+    const result = await evaluateAdapter("test-model", adapterDir, testFile);
     // It reached the mlx_lm evaluate path (which errors), not the "no test data" path
     expect(result.details).not.toContain("No test data available");
+    expect(result.testCases).toBe(1);
   });
 
   it("returns no improvement when adapter files missing", async () => {

@@ -38,10 +38,9 @@ export interface EvalResult {
   details: string;
 }
 
-const EDEN_MODELS_DIR = path.join(os.homedir(), ".eden-models");
-const ACTIVE_DIR = path.join(EDEN_MODELS_DIR, "active");
-const ADAPTERS_DIR = path.join(EDEN_MODELS_DIR, "adapters");
-const HISTORY_PATH = path.join(EDEN_MODELS_DIR, "training_history.jsonl");
+const MODELS_DIR = path.join(os.homedir(), ".config", "training-flywheel", "models");
+const ACTIVE_DIR = path.join(MODELS_DIR, "active");
+const ADAPTERS_DIR = path.join(MODELS_DIR, "adapters");
 
 let _storage: Storage | null = null;
 
@@ -55,7 +54,7 @@ export function setTrainingStorage(storage: Storage | null): void {
 }
 
 function ensureDirs(): void {
-  for (const dir of [EDEN_MODELS_DIR, ACTIVE_DIR, ADAPTERS_DIR]) {
+  for (const dir of [MODELS_DIR, ACTIVE_DIR, ADAPTERS_DIR]) {
     fs.mkdirSync(dir, { recursive: true });
   }
 }
@@ -139,53 +138,51 @@ export async function trainAdapter(config: TrainConfig): Promise<TrainResult> {
 }
 
 /**
- * Evaluate base model vs fine-tuned on test cases.
- * Uses a simple prompt-completion accuracy test.
+ * Evaluate base model vs fine-tuned adapter on test data.
+ * Requires a test data file (eval split from flywheel_export).
  */
 export async function evaluateAdapter(
   baseModel: string,
   adapterPath: string,
   testDataPath?: string,
-  trainDataPath?: string,
 ): Promise<EvalResult> {
   ensureDirs();
 
-  // If no explicit test data, try using train data for a sanity eval
-  const effectiveTestData = testDataPath && fs.existsSync(testDataPath)
-    ? testDataPath
-    : trainDataPath && fs.existsSync(trainDataPath)
-      ? trainDataPath
-      : null;
+  // Verify adapter exists
+  const adapterExists = fs.existsSync(path.join(adapterPath, "adapters.safetensors"))
+    || fs.existsSync(path.join(adapterPath, "adapters.npz"));
 
-  if (!effectiveTestData) {
-    const adapterExists = fs.existsSync(path.join(adapterPath, "adapters.safetensors"))
-      || fs.existsSync(path.join(adapterPath, "adapters.npz"));
-
-    if (!adapterExists) {
-      return {
-        baseScore: 0.5,
-        adaptedScore: 0.5,
-        improved: false,
-        testCases: 0,
-        details: "No adapter files found — training may not have completed.",
-      };
-    }
-
+  if (!adapterExists) {
     return {
       baseScore: 0.5,
       adaptedScore: 0.5,
       improved: false,
       testCases: 0,
-      details: "No test data available — cannot evaluate. Provide testData or re-export with a held-out split.",
+      details: "No adapter files found — training may not have completed.",
     };
   }
 
-  // With test data, run mlx_lm.evaluate
+  // Require test data — no heuristic fallback
+  if (!testDataPath || !fs.existsSync(testDataPath)) {
+    return {
+      baseScore: 0.5,
+      adaptedScore: 0.5,
+      improved: false,
+      testCases: 0,
+      details: "No test data available — cannot evaluate. Re-export with flywheel_export (evalSplit: true) to generate a held-out eval set.",
+    };
+  }
+
+  // Count test cases
+  const testLines = fs.readFileSync(testDataPath, "utf-8").split("\n").filter(Boolean);
+  const testCases = testLines.length;
+
+  // Run mlx_lm.evaluate with test data
   const args = [
     "-m", "mlx_lm", "evaluate",
     "--model", baseModel,
     "--adapter-path", adapterPath,
-    "--data", effectiveTestData,
+    "--data", testDataPath,
   ];
 
   return new Promise<EvalResult>((resolve) => {
@@ -203,7 +200,7 @@ export async function evaluateAdapter(
         baseScore: 0.5,
         adaptedScore,
         improved: adaptedScore > 0.5,
-        testCases: 0,
+        testCases,
         details: error ? `Evaluation error: ${error.message}` : output.trim(),
       });
     });
@@ -236,57 +233,33 @@ export function promoteAdapter(adapterPath: string, name?: string): string {
 }
 
 /**
- * Get training history from SQLite (preferred) or JSONL file (fallback).
+ * Get training history from SQLite.
+ * Requires setTrainingStorage() to have been called.
  */
 export function getTrainingHistory(): TrainResult[] {
-  if (_storage) {
-    return _storage.getTrainingRuns().map((r) => ({
-      adapterPath: r.adapterPath,
-      baseModel: r.baseModel,
-      iterations: r.iterations,
-      durationSeconds: r.durationSeconds,
-      trainLoss: r.trainLoss,
-      evalLoss: r.evalLoss,
-      error: r.error,
-    }));
-  }
-
-  // Fallback to JSONL file
-  ensureDirs();
-  if (!fs.existsSync(HISTORY_PATH)) return [];
-
-  const history: TrainResult[] = [];
-  const lines = fs.readFileSync(HISTORY_PATH, "utf-8").split("\n");
-  for (const line of lines) {
-    if (!line.trim()) continue;
-    try {
-      history.push(JSON.parse(line));
-    } catch {}
-  }
-  return history;
+  if (!_storage) return [];
+  return _storage.getTrainingRuns().map((r) => ({
+    adapterPath: r.adapterPath,
+    baseModel: r.baseModel,
+    iterations: r.iterations,
+    durationSeconds: r.durationSeconds,
+    trainLoss: r.trainLoss,
+    evalLoss: r.evalLoss,
+    error: r.error,
+  }));
 }
 
 function logTrainingRun(result: TrainResult): void {
-  if (_storage) {
-    _storage.recordTrainingRun({
-      adapterPath: result.adapterPath,
-      baseModel: result.baseModel,
-      iterations: result.iterations,
-      durationSeconds: result.durationSeconds,
-      trainLoss: result.trainLoss,
-      evalLoss: result.evalLoss,
-      error: result.error,
-    });
-    return;
-  }
-
-  // Fallback to JSONL file
-  ensureDirs();
-  const entry = JSON.stringify({
-    ...result,
-    timestamp: new Date().toISOString(),
+  if (!_storage) return;
+  _storage.recordTrainingRun({
+    adapterPath: result.adapterPath,
+    baseModel: result.baseModel,
+    iterations: result.iterations,
+    durationSeconds: result.durationSeconds,
+    trainLoss: result.trainLoss,
+    evalLoss: result.evalLoss,
+    error: result.error,
   });
-  fs.appendFileSync(HISTORY_PATH, entry + "\n");
 }
 
 /**
