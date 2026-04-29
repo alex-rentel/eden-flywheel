@@ -1,0 +1,30 @@
+version: 2
+
+updates:
+  # npm packages declared in package.json.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "09:00"
+      timezone: America/Detroit
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - npm
+    groups:
+      runtime:
+        dependency-type: production
+      dev:
+        dependency-type: development
+
+  # GitHub Actions versions in .github/workflows/.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels:
+      - dependencies
+      - github-actions
