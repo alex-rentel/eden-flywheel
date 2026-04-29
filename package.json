@@ -44,8 +44,8 @@
   "homepage": "https://github.com/alex-rentel/eden-flywheel#readme",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
-    "better-sqlite3": "^12.8.0",
-    "uuid": "^13.0.0"
+    "better-sqlite3": "^12.9.0",
+    "uuid": "^14.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
