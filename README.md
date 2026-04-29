@@ -1,4 +1,4 @@
-# training-flywheel
+# eden-flywheel
 
 **A standalone MCP server for Claude Code that captures your coding sessions as fine-tuning data for local models.**
 
@@ -11,7 +11,7 @@ The closed loop: use AI → capture → fine-tune → deploy → repeat.
 
 ## What it does
 
-Every conversation with your AI agent is a potential training example. training-flywheel captures these interactions, scores them for quality, deduplicates, formats them as SFT training data, and triggers fine-tuning runs — all through the Model Context Protocol.
+Every conversation with your AI agent is a potential training example. eden-flywheel captures these interactions, scores them for quality, deduplicates, formats them as SFT training data, and triggers fine-tuning runs — all through the Model Context Protocol.
 
 ```
 You use Claude Code daily
@@ -54,11 +54,11 @@ Add to your MCP configuration (`~/.claude/mcp.json` or equivalent):
 ```json
 {
   "mcpServers": {
-    "training-flywheel": {
+    "eden-flywheel": {
       "command": "npx",
-      "args": ["-y", "training-flywheel"],
+      "args": ["-y", "eden-flywheel"],
       "env": {
-        "FLYWHEEL_DB": "~/.config/training-flywheel/flywheel.db",
+        "FLYWHEEL_DB": "~/.config/eden-flywheel/flywheel.db",
         "OPENROUTER_API_KEY": "your-key-here"
       }
     }
@@ -69,8 +69,8 @@ Add to your MCP configuration (`~/.claude/mcp.json` or equivalent):
 Or install locally:
 
 ```bash
-git clone https://github.com/alex-rentel/training-flywheel.git
-cd training-flywheel
+git clone https://github.com/alex-rentel/eden-flywheel.git
+cd eden-flywheel
 npm install && npm run build
 ```
 
@@ -79,9 +79,9 @@ Then point MCP at the built entry:
 ```json
 {
   "mcpServers": {
-    "training-flywheel": {
+    "eden-flywheel": {
       "command": "node",
-      "args": ["/path/to/training-flywheel/dist/index.js"]
+      "args": ["/path/to/eden-flywheel/dist/index.js"]
     }
   }
 }
@@ -124,7 +124,7 @@ flywheel_train {
 ```
 flywheel_eval {
   baseModel: "mlx-community/Qwen2.5-Coder-3B-Instruct-4bit",
-  adapterPath: "~/.config/training-flywheel/models/adapters/lora-...",
+  adapterPath: "~/.config/eden-flywheel/models/adapters/lora-...",
   testData: "/tmp/train.eval.jsonl"
 }
 ```
@@ -204,12 +204,12 @@ flywheel_promote { adapterPath: "..." }
 
 ## Configuration
 
-Config file at `~/.config/training-flywheel/config.json`:
+Config file at `~/.config/eden-flywheel/config.json`:
 
 ```json
 {
   "logLevel": "info",
-  "dbPath": "~/.config/training-flywheel/flywheel.db",
+  "dbPath": "~/.config/eden-flywheel/flywheel.db",
   "autoCapture": true,
   "defaultExportFormat": "chatml"
 }
@@ -218,10 +218,10 @@ Config file at `~/.config/training-flywheel/config.json`:
 ### CLI Flags
 
 ```bash
-training-flywheel --verbose            # Debug logging
-training-flywheel --quiet              # Error-only logging
-training-flywheel --log-level warn     # Specific log level
-training-flywheel --db-path /tmp/f.db  # Custom database path
+eden-flywheel --verbose            # Debug logging
+eden-flywheel --quiet              # Error-only logging
+eden-flywheel --log-level warn     # Specific log level
+eden-flywheel --db-path /tmp/f.db  # Custom database path
 ```
 
 ### Environment Variables

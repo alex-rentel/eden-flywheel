@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * training-flywheel MCP Server
+ * eden-flywheel MCP Server
  *
  * Captures AI coding sessions as training data for fine-tuning local models.
  * The closed loop: use AI -> capture -> fine-tune -> deploy better model -> repeat.
@@ -30,7 +30,7 @@ const exporter = new Exporter(storage);
 const autoCapture = new AutoCapture(capture);
 
 const server = new McpServer({
-  name: "training-flywheel",
+  name: "eden-flywheel",
   version: "1.0.0",
 }, {
   capabilities: {
@@ -391,7 +391,7 @@ server.tool(
   {
     baseModel: z.string().describe("Base model path or HuggingFace ID (e.g., mlx-community/Qwen2.5-Coder-3B-Instruct-4bit)"),
     trainData: z.string().describe("Path to training JSONL file"),
-    outputDir: z.string().optional().describe("Output directory for adapter (default: ~/.config/training-flywheel/models/adapters/lora-<timestamp>)"),
+    outputDir: z.string().optional().describe("Output directory for adapter (default: ~/.config/eden-flywheel/models/adapters/lora-<timestamp>)"),
     iterations: z.number().optional().describe("Training iterations (default: 100)"),
     batchSize: z.number().optional().describe("Batch size (default: 2)"),
     learningRate: z.number().optional().describe("Learning rate (default: 1e-5)"),
@@ -688,7 +688,7 @@ server.tool(
 async function main() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  logger.info("training-flywheel MCP server running on stdio", {
+  logger.info("eden-flywheel MCP server running on stdio", {
     logLevel: config.logLevel || "info",
     dbPath: config.dbPath || "default",
   });

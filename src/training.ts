@@ -38,7 +38,7 @@ export interface EvalResult {
   details: string;
 }
 
-const MODELS_DIR = path.join(os.homedir(), ".config", "training-flywheel", "models");
+const MODELS_DIR = path.join(os.homedir(), ".config", "eden-flywheel", "models");
 const ACTIVE_DIR = path.join(MODELS_DIR, "active");
 const ADAPTERS_DIR = path.join(MODELS_DIR, "adapters");
 

@@ -1,5 +1,5 @@
 /**
- * Structured JSON logger for training-flywheel.
+ * Structured JSON logger for eden-flywheel.
  *
  * Outputs to stderr (stdout is reserved for MCP protocol).
  */
